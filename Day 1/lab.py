@@ -95,19 +95,38 @@ def build_input(case: dict[str, Any]) -> list[dict[str, str]]:
     return [{"role": "user", "content": f"Problem: {case['problem']}"}]
 
 
-def request_case(client: Any, model: str, case: dict[str, Any], timeout: float, retries: int) -> tuple[dict[str, Any], Any, float]:
+def usage_tokens(response: Any) -> tuple[int | None, int | None]:
+    usage = getattr(response, "usage", None)
+    if not usage:
+        return None, None
+    input_tokens = getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", None)
+    output_tokens = getattr(usage, "output_tokens", None) or getattr(usage, "completion_tokens", None)
+    return input_tokens, output_tokens
+
+
+def request_case(client: Any, provider: str, model: str, case: dict[str, Any], timeout: float, retries: int) -> tuple[dict[str, Any], Any, float]:
     last_error: Exception | None = None
     for attempt in range(retries + 1):
         started = time.perf_counter()
         try:
-            response = client.responses.create(
-                model=model,
-                instructions=SYSTEM_PROMPT,
-                input=build_input(case),
-                text={"format": {"type": "json_schema", "name": "math_solution", "strict": True, "schema": SCHEMA}},
-                timeout=timeout,
-            )
-            parsed = parse_response(response.output_text)
+            if provider == "openai":
+                response = client.responses.create(
+                    model=model,
+                    instructions=SYSTEM_PROMPT,
+                    input=build_input(case),
+                    text={"format": {"type": "json_schema", "name": "math_solution", "strict": True, "schema": SCHEMA}},
+                    timeout=timeout,
+                )
+                response_text = response.output_text
+            else:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "system", "content": SYSTEM_PROMPT}, *build_input(case)],
+                    response_format={"type": "json_schema", "json_schema": {"name": "math_solution", "strict": True, "schema": SCHEMA}},
+                    timeout=timeout,
+                )
+                response_text = response.choices[0].message.content or ""
+            parsed = parse_response(response_text)
             return parsed, response, time.perf_counter() - started
         except (json.JSONDecodeError, ValueError):
             raise
@@ -118,20 +137,18 @@ def request_case(client: Any, model: str, case: dict[str, Any], timeout: float, 
     raise RuntimeError(str(last_error)) from last_error
 
 
-def evaluate(client: Any, cases: list[dict[str, Any]], model: str, timeout: float, retries: int) -> list[CaseResult]:
+def evaluate(client: Any, provider: str, cases: list[dict[str, Any]], model: str, timeout: float, retries: int) -> list[CaseResult]:
     results: list[CaseResult] = []
     for case in cases:
         result = CaseResult(case["id"], case["category"], case["difficulty"])
         try:
-            payload, response, latency = request_case(client, model, case, timeout, retries)
+            payload, response, latency = request_case(client, provider, model, case, timeout, retries)
             result.final_answer = payload["final_answer"]
-            result.raw_response = response.output_text
+            result.raw_response = json.dumps(payload)
             result.valid_schema = True
             result.verified = verify_answer(case, result.final_answer)
             result.latency_seconds = latency
-            usage = getattr(response, "usage", None)
-            result.input_tokens = getattr(usage, "input_tokens", None) if usage else None
-            result.output_tokens = getattr(usage, "output_tokens", None) if usage else None
+            result.input_tokens, result.output_tokens = usage_tokens(response)
             if not result.verified:
                 result.error_type = "wrong_answer"
         except json.JSONDecodeError:
@@ -186,24 +203,29 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--dataset", type=Path, default=DATASET_PATH)
-    parser.add_argument("--model", default=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"))
+    parser.add_argument("--provider", choices=("openai", "grok"), default=os.getenv("LAB_PROVIDER", "openai"))
+    parser.add_argument("--model", default=None)
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     args = parser.parse_args()
+    default_model = "gpt-4.1-mini" if args.provider == "openai" else "grok-4-1-fast-reasoning"
+    args.model = args.model or os.getenv(f"{args.provider.upper()}_MODEL", default_model)
     cases = load_cases(args.dataset)
     if args.self_check:
         self_check(cases)
         return 0
-    if not os.getenv("OPENAI_API_KEY"):
-        print("OPENAI_API_KEY is required for an API run. Use --self-check to validate offline.", file=sys.stderr)
+    api_key_name = "OPENAI_API_KEY" if args.provider == "openai" else "XAI_API_KEY"
+    if not os.getenv(api_key_name):
+        print(f"{api_key_name} is required for an API run. Use --self-check to validate offline.", file=sys.stderr)
         return 2
     from openai import OpenAI
     random.seed(0)
-    results = evaluate(OpenAI(), cases, args.model, args.timeout, args.retries)
+    client = OpenAI(api_key=os.environ[api_key_name], base_url="https://api.x.ai/v1" if args.provider == "grok" else None)
+    results = evaluate(client, args.provider, cases, args.model, args.timeout, args.retries)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    report = {"experiment": "lab2_chain_of_thought_math", "model": args.model, "dataset": str(args.dataset), "results": [vars(item) for item in results], "summary": summarize(results)}
+    report = {"experiment": "lab2_chain_of_thought_math", "provider": args.provider, "model": args.model, "dataset": str(args.dataset), "results": [vars(item) for item in results], "summary": summarize(results)}
     output_path = args.output_dir / f"run_{stamp}.json"
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report["summary"], indent=2))

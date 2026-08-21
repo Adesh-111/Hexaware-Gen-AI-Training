@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Grounded answers to common company questions.">
+  <title>Atlas — Company FAQ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Atlas home"><span class="mark">A</span><span>ATLAS</span></a>
+      <div class="status"><span class="status-dot"></span><span id="statusText">Checking knowledge base…</span></div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">COMPANY FAQ · EMPLOYEE HELP DESK</p>
+        <h1>Answers, grounded<br>in what we know.</h1>
+        <p class="lede">Ask about leave, hybrid work, payroll, IT support, expenses, security, or company policies.</p>
+      </section>
+
+      <section class="chat-card" aria-label="FAQ assistant">
+        <div id="conversation" class="conversation" aria-live="polite">
+          <div class="message assistant-message">
+            <div class="avatar">A</div>
+            <div class="bubble">
+              <p class="speaker">ATLAS</p>
+              <p>Hi — I’m your company FAQ assistant. What can I help you find today?</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="suggestions" class="suggestions">
+          <button type="button">How do I apply for leave?</button>
+          <button type="button">What is the work-from-home policy?</button>
+          <button type="button">How do I contact IT support?</button>
+        </div>
+
+        <form id="askForm" class="composer">
+          <label class="sr-only" for="question">Ask a question</label>
+          <textarea id="question" rows="1" maxlength="1000" placeholder="Ask the knowledge base…" required></textarea>
+          <button id="sendButton" type="submit" aria-label="Send question"><span>Ask</span><span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="fine-print">Answers are generated from company FAQ content. Verify important decisions with HR or the relevant policy owner.</p>
+      </section>
+    </main>
+
+    <footer><span>Powered by LangChain + ChromaDB</span><span>Company Knowledge · Internal</span></footer>
+  </div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

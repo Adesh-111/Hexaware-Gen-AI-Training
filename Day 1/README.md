@@ -14,6 +14,7 @@ This lab evaluates whether an OpenAI model produces correct, concise, and verifi
 
 ```text
 lab.py             API runner, schema validation, verifiers, metrics, self-check
+app.py             Streamlit dashboard for running and reviewing experiments
 dataset.jsonl      Reproducible cases and expected answers
 test_lab.py        Offline tests for the experiment logic
 requirements.txt   Python dependencies
@@ -47,11 +48,29 @@ $env:OPENAI_API_KEY = "your-key"
 py lab.py
 ```
 
+Launch the UI locally:
+
+```powershell
+streamlit run app.py
+```
+
+Then open the local URL shown by Streamlit, usually `http://localhost:8501`. Use **Run offline self-check** to validate the lab without a key, or enter an OpenAI/Grok key in the sidebar and choose **Start model run**. Reports are saved in `outputs/` and can be selected from the dashboard.
+
+The same lab can run against Grok through xAI's OpenAI-compatible API:
+
+```powershell
+$env:XAI_API_KEY = "your-xai-key"
+py lab.py --provider grok --model grok-4-1-fast-reasoning
+```
+
+Use `OPENAI_MODEL` or `GROK_MODEL` to set a provider-specific default. The evaluator and dataset stay identical, making provider comparisons meaningful. API keys are read from environment variables and are never written to reports.
+
 Useful options:
 
 ```powershell
 py lab.py --self-check
 py lab.py --model gpt-4.1-mini --retries 2 --timeout 60
+py lab.py --provider grok --model grok-4-1-fast-reasoning --retries 2 --timeout 60
 py -m pytest -q
 ```
 
